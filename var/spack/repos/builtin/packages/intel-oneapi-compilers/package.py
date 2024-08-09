@@ -251,7 +251,8 @@ class IntelOneapiCompilers(IntelOneApiPackage, CompilerPackage):
 
     # See https://github.com/spack/spack/issues/39252
     depends_on("patchelf@:0.17", type="build", when="@:2024.1")
-
+    # Add the nvidia variant
+    variant("nvidia", default=False, description="Install NVIDIA plugin for OneAPI")
     # TODO: effectively gcc is a direct dependency of intel-oneapi-compilers, but we
     # cannot express that properly. For now, add conflicts for non-gcc compilers
     # instead.
@@ -326,6 +327,58 @@ class IntelOneapiCompilers(IntelOneApiPackage, CompilerPackage):
             # Some installers have a bug and do not return an error code when failing
             if not is_exe(self._llvm_bin.ifx):
                 raise RuntimeError("Fortran install failed")
+            # NVIDIA-specific installation
+        if "+nvidia" in spec:
+            nvidia_installer_url = "https://developer.codeplay.com/api/v1/products/download?product=oneapi&variant=nvidia"
+            nvidia_installer_file = os.path.join(prefix, "oneapi-for-nvidia-gpus-2024.2.0-cuda-12.0-linux.sh")
+
+            # Download the NVIDIA plugin installer
+            wget = which("wget")
+            if not wget:
+                print("Error: wget not found. Please install wget.")
+                return
+
+            # Use wget with `--output-document` to specify the filename
+            try:
+                wget("-O", nvidia_installer_file, nvidia_installer_url)
+            except Exception as e:
+                print(f"Error: Failed to download the NVIDIA installer: {e}")
+                return
+
+            # Check if the file was downloaded correctly
+            if not os.path.exists(nvidia_installer_file):
+                print(f"Error: Expected file {nvidia_installer_file} does not exist after download.")
+                return
+
+            # Make the installer executable
+            chmod = which("chmod")
+            if not chmod:
+                print("Error: chmod not found. Please ensure chmod is available.")
+                return
+
+            try:
+                chmod("+x", nvidia_installer_file)
+            except Exception as e:
+                print(f"Error: Failed to make the installer executable: {e}")
+                return
+
+            # Run the installer using bash
+            bash = which("bash")
+            if not bash:
+                print("Error: bash not found. Please ensure bash is available.")
+                return
+
+            try:
+                bash(nvidia_installer_file, "--install-dir", prefix)
+            except Exception as e:
+                print(f"Error: Failed to run the NVIDIA installer: {e}")
+                return
+
+            # Clean up the installer file after installation
+            try:
+                os.remove(nvidia_installer_file)
+            except Exception as e:
+                print(f"Error: Failed to remove the installer file: {e}")
 
     @run_after("install")
     def inject_rpaths(self):
